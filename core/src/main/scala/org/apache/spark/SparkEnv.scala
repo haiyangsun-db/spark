@@ -52,7 +52,7 @@ import org.apache.spark.shuffle.streaming.MultiShuffleManager
 import org.apache.spark.storage._
 import org.apache.spark.udf.worker.UDFWorkerSpecification
 import org.apache.spark.udf.worker.core.{UDFDispatcherFactory, UDFDispatcherManager,
-  WorkerDispatcher, WorkerLogger}
+  WorkerDispatcher}
 import org.apache.spark.util.{RpcUtils, Utils}
 import org.apache.spark.util.ArrayImplicits._
 import org.apache.spark.util.SparkUDFWorkerLogger
@@ -226,7 +226,7 @@ class SparkEnv (
   // Guarded by this SparkEnv's monitor, together with isStopped.
   private var udfDispatcherManager: Option[UDFDispatcherManager] = None
 
-  private def createUDFDispatcherManager(): UDFDispatcherManager = {
+  private[spark] def createUDFDispatcherManager(): UDFDispatcherManager = {
     val factory = SparkEnv.resolveUDFDispatcherFactory(
       conf, SparkContext.isDriver(executorId))
     new UDFDispatcherManager(factory, new SparkUDFWorkerLogger())
@@ -525,48 +525,38 @@ object SparkEnv extends Logging {
   private[spark] val driverSystemName = "sparkDriver"
   private[spark] val executorSystemName = "sparkExecutor"
 
+  private val directGrpcDispatcherFactoryClass =
+    "org.apache.spark.udf.worker.grpc.DirectGrpcDispatcherFactory"
+
   /**
    * :: Experimental ::
    * Resolves the [[UDFDispatcherFactory]] used to create dispatchers for external UDF
-   * workers (SPARK-55278), from `spark.udf.worker.dispatcherFactory`.
+   * workers (SPARK-55278), from `spark.udf.worker.dispatcher`.
    *
-   * The factory is loaded reflectively rather than named here: `core` depends on
-   * `udf-worker-proto` and `udf-worker-core` only, so that neither it nor its consumers
-   * carry a gRPC dependency. Every concrete dispatcher therefore lives in a module that
-   * core cannot reference at compile time, and the implementation has to be selected by
-   * configuration.
+   * Each configuration value maps to a Spark-owned factory class. Loading that class
+   * reflectively keeps the gRPC implementation off core's compile classpath without
+   * allowing applications to supply arbitrary factory implementations.
    *
-   * When the config is unset the returned factory throws on first use rather than at
-   * SparkEnv creation, so applications that never run an external UDF are unaffected.
+   * Resolution happens on first dispatcher use, not at SparkEnv creation, so applications
+   * that never run an external UDF do not initialize the transport.
    */
   private[spark] def resolveUDFDispatcherFactory(
       conf: SparkConf,
       isDriver: Boolean): UDFDispatcherFactory = {
-    conf.get(UDF.DISPATCHER_FACTORY) match {
-      case Some(className) =>
-        // Validate before constructing so that a misconfigured class is reported against
-        // the config key, rather than as a ClassCastException from the call site.
-        val cls = Utils.classForName[AnyRef](className, initialize = false)
-        if (!classOf[UDFDispatcherFactory].isAssignableFrom(cls)) {
-          throw new SparkException(
-            s"${UDF.DISPATCHER_FACTORY.key} is set to $className, which does not implement " +
-              s"${classOf[UDFDispatcherFactory].getName}.")
-        }
-        Utils.instantiateSerializerOrShuffleManager[UDFDispatcherFactory](
-          className, conf, isDriver)
-
-      case None =>
-        new UDFDispatcherFactory {
-          override def createDispatcher(
-              workerSpec: UDFWorkerSpecification,
-              logger: WorkerLogger): WorkerDispatcher = {
-            throw new UnsupportedOperationException(
-              "No UDF dispatcher factory is configured, so external UDF workers cannot be " +
-                s"created. Set ${UDF.DISPATCHER_FACTORY.key} to the name of a " +
-                s"${classOf[UDFDispatcherFactory].getName} implementation.")
-          }
-        }
+    val dispatcher = conf.get(UDF.DISPATCHER)
+    val className = dispatcher match {
+      case UDF.Dispatcher.DIRECT => directGrpcDispatcherFactoryClass
     }
+    // Validate the Spark-owned mapping before constructing so a packaging error is
+    // reported here rather than as a ClassCastException from the call site.
+    val cls = Utils.classForName[AnyRef](className, initialize = false)
+    if (!classOf[UDFDispatcherFactory].isAssignableFrom(cls)) {
+      throw new SparkException(
+        s"Built-in UDF dispatcher $dispatcher maps to $className, which does not implement " +
+          s"${classOf[UDFDispatcherFactory].getName}.")
+    }
+    Utils.instantiateSerializerOrShuffleManager[UDFDispatcherFactory](
+      className, conf, isDriver)
   }
 
   def set(e: SparkEnv): Unit = {

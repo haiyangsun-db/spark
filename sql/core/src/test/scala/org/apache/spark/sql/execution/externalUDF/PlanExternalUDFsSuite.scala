@@ -716,10 +716,11 @@ class PlanExternalUDFsSuite extends QueryTest with SharedSparkSession {
     assert(execution.workerSpec == spec)
   }
 
-  test("scalar external UDF execution reaches dispatcher creation") {
-    val spec = workerSpec("unimplemented-scalar")
+  test("scalar external UDF execution reaches the default direct gRPC dispatcher") {
+    // An incomplete transport spec reaches the real factory but cannot launch a worker.
+    val spec = workerSpec("invalid-transport")
     val range = Range(0, 10, 1, 1)
-    val function = udf("unimplemented-scalar", spec, Seq(singleOutput(range)))
+    val function = udf("invalid-transport", spec, Seq(singleOutput(range)))
     val resultAttr = AttributeReference("externalUDF", IntegerType, nullable = true)()
     val logicalPlan = ExecuteExternalUDF(function, resultAttr, range)
     val execution = spark.sessionState.planner.plan(logicalPlan).toSeq match {
@@ -731,9 +732,8 @@ class PlanExternalUDFsSuite extends QueryTest with SharedSparkSession {
     val exception = intercept[SparkException] {
       execution.execute().collect()
     }
-    val message = Utils.exceptionString(exception)
-    assert(message.contains("No UDF dispatcher factory is configured"))
-    assert(message.contains("spark.udf.worker.dispatcherFactory"))
+    assert(Utils.exceptionString(exception).contains(
+      "DirectWorker.properties.connection must be set"))
   }
 
   test("map partitions external UDF execution reports unimplemented before worker startup") {

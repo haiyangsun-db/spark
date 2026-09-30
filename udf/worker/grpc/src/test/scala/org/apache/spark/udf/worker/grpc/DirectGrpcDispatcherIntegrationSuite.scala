@@ -21,10 +21,18 @@ import java.nio.file.Paths
 import java.util.concurrent.{Callable, TimeUnit}
 
 import com.google.protobuf.ByteString
+import org.mockito.Answers.RETURNS_DEEP_STUBS
+import org.mockito.Mockito.mock
 import org.scalatest.BeforeAndAfterEach
 // scalastyle:off funsuite
 import org.scalatest.funsuite.AnyFunSuite
 
+import org.apache.spark.{MapOutputTracker, SparkConf, SparkContext, SparkEnv}
+import org.apache.spark.broadcast.BroadcastManager
+import org.apache.spark.metrics.MetricsSystem
+import org.apache.spark.rpc.RpcEnv
+import org.apache.spark.scheduler.OutputCommitCoordinator
+import org.apache.spark.storage.BlockManager
 import org.apache.spark.udf.worker.{Cancel, DataRequest, DirectWorker, Finish, Init,
   ProcessCallable, UdfPayload, UDFProtoCommunicationPattern, UDFWorkerDataFormat,
   UDFWorkerProperties, UDFWorkerSpecification, UnixDomainSocket, WorkerCapabilities,
@@ -118,6 +126,73 @@ class DirectGrpcDispatcherIntegrationSuite
       case channel: GrpcWorkerChannel => channel
       case other => fail(s"Expected GrpcWorkerChannel, got ${other.getClass.getSimpleName}")
     }
+
+  private def newSparkEnv(): SparkEnv = {
+    // SparkEnv and its workers are real; unrelated Spark services are stubbed out.
+    new SparkEnv(
+      SparkContext.DRIVER_IDENTIFIER,
+      mock(classOf[RpcEnv]),
+      null,
+      null,
+      null,
+      mock(classOf[MapOutputTracker]),
+      mock(classOf[BroadcastManager]),
+      mock(classOf[BlockManager], RETURNS_DEEP_STUBS),
+      null,
+      mock(classOf[MetricsSystem]),
+      mock(classOf[OutputCommitCoordinator]),
+      new SparkConf(false))
+  }
+
+  test("SparkEnv loads the default factory and caches dispatchers by worker specification") {
+    val env = newSparkEnv()
+    try {
+      val spec = workerSpec()
+      val first = env.getExternalUDFDispatcher(spec)
+      assert(first.isInstanceOf[DirectGrpcDispatcher])
+      assert(first.workerSpec eq spec)
+      assert(env.getExternalUDFDispatcher(spec.toBuilder.build()) eq first)
+      assert(env.getExternalUDFDispatcher(workerSpec(initTimeoutMs = 30001)) ne first)
+    } finally {
+      env.stop()
+    }
+  }
+
+  test("SparkEnv shuts down a worker launched through the default direct gRPC dispatcher") {
+    val env = newSparkEnv()
+    try {
+      val spec = workerSpec()
+      val directDispatcher = env.getExternalUDFDispatcher(spec)
+      val session = directDispatcher.createSession(None)
+      val process = workerProcess(session)
+      val channel = grpcChannel(process)
+      val socketFile = new File(channel.socketPath)
+      val socketDir = socketFile.getParentFile
+      val payload = ByteString.copyFromUtf8("SparkEnv direct dispatcher")
+
+      session.init(basicInit)
+      val input = DataRequest.newBuilder().setData(payload).build()
+      assert(session.process(Iterator.single(input), emptyFinish).map(_.getData).toList ==
+        List(payload))
+
+      env.stop()
+      assert(!process.process.isAlive, "SparkEnv.stop should terminate the worker")
+      assert(channel.channel.isShutdown, "SparkEnv.stop should close the worker channel")
+      assert(channel.isEventLoopTerminated, "SparkEnv.stop should stop worker transport threads")
+      assert(!socketFile.exists(), "SparkEnv.stop should remove the worker socket")
+      assert(!socketDir.exists(), "SparkEnv.stop should remove the dispatcher's socket directory")
+      val dispatcherError = intercept[IllegalStateException] {
+        directDispatcher.createSession(None)
+      }
+      assert(dispatcherError.getMessage == "Dispatcher is closed")
+      val envError = intercept[IllegalStateException] {
+        env.getExternalUDFDispatcher(spec)
+      }
+      assert(envError.getMessage == "SparkEnv is stopped")
+    } finally {
+      env.stop()
+    }
+  }
 
   test("event-loop threads are named daemons and terminate on shutdown") {
     val eventLoopGroup = UnixDomainSocketTransport.detect().newEventLoopGroup()

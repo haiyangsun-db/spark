@@ -300,17 +300,6 @@ variant = Module(
     sbt_test_goals=["variant/test"],
 )
 
-udf_worker = Module(
-    name="udf-worker",
-    dependencies=[tags],
-    source_file_regexes=[
-        "udf/worker/",
-    ],
-    sbt_test_goals=[
-        "udf-worker-core/test",
-    ],
-)
-
 core = Module(
     name="core",
     dependencies=[kvstore, network_common, network_shuffle, unsafe, launcher, utils],
@@ -319,6 +308,18 @@ core = Module(
     ],
     sbt_test_goals=[
         "core/test",
+    ],
+)
+
+udf_worker = Module(
+    name="udf-worker",
+    dependencies=[tags, core],
+    source_file_regexes=[
+        "udf/worker/",
+    ],
+    sbt_test_goals=[
+        "udf-worker-core/test",
+        "udf-worker-grpc/test",
     ],
 )
 
@@ -349,7 +350,7 @@ catalyst = Module(
 
 sql = Module(
     name="sql",
-    dependencies=[catalyst],
+    dependencies=[catalyst, udf_worker],
     source_file_regexes=[
         "sql/core/",
         "python/pyspark/sql/worker/",  # analyze_udtf is invoked and tested in JVM

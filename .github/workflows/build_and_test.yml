@@ -169,7 +169,7 @@ jobs:
             docs=false
             java25=false
           fi
-          build=`./dev/is-changed.py -m "core,unsafe,kvstore,avro,utils,utils-java,network-common,network-shuffle,repl,launcher,examples,sketch,variant,api,catalyst,hive-thriftserver,mllib-local,mllib,graphx,streaming,sql-kafka-0-10,streaming-kafka-0-10,streaming-kinesis-asl,credential-aws,kubernetes,hadoop-cloud,spark-ganglia-lgpl,profiler,protobuf,yarn,connect,sql,hive,pipelines"`
+          build=`./dev/is-changed.py -m "core,unsafe,kvstore,avro,utils,utils-java,network-common,network-shuffle,repl,launcher,examples,sketch,variant,api,catalyst,hive-thriftserver,mllib-local,mllib,graphx,streaming,sql-kafka-0-10,streaming-kafka-0-10,streaming-kinesis-asl,credential-aws,kubernetes,hadoop-cloud,spark-ganglia-lgpl,profiler,protobuf,yarn,connect,sql,hive,pipelines,udf-worker"`
           build_core_utils=`./dev/is-changed.py -m "core,unsafe,kvstore,utils,utils-java,network-common,network-shuffle,sketch,variant,launcher"`
           precondition="
             {
@@ -299,6 +299,7 @@ jobs:
             streaming, sql-kafka-0-10, streaming-kafka-0-10, streaming-kinesis-asl,
             credential-aws, kubernetes, hadoop-cloud, spark-ganglia-lgpl, protobuf, connect, avro
           - yarn
+          - udf-worker
         # Here, we split Hive and SQL tests into some of slow ones and the rest of them.
         included-tags: [""]
         excluded-tags: [""]
@@ -418,6 +419,11 @@ jobs:
       env: ${{ fromJSON(inputs.envs) }}
       shell: 'script -q -e -c "bash {0}"'
       run: |
+        # This reusable workflow also tests release branches predating the UDF worker modules.
+        if [[ "$MODULES_TO_TEST" == "udf-worker" && ! -d udf/worker/grpc ]]; then
+          echo "Skipping UDF worker tests: the modules are not present on this branch."
+          exit 0
+        fi
         # Fix for TTY related issues when launching the Ammonite REPL in tests.
         export TERM=vt100
         # Hive "other tests" test needs larger metaspace size based on experiment.

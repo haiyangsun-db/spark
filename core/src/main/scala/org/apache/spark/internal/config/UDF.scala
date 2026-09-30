@@ -18,17 +18,18 @@ package org.apache.spark.internal.config
 
 private[spark] object UDF {
 
-  val DISPATCHER_FACTORY = ConfigBuilder("spark.udf.worker.dispatcherFactory")
-    .doc("Name of the class implementing " +
-      "org.apache.spark.udf.worker.core.UDFDispatcherFactory, used to create the " +
-      "dispatchers that provision and manage external UDF workers (SPARK-55278). The " +
-      "class must have a no-arg constructor, a constructor taking a SparkConf, or a " +
-      "constructor taking a SparkConf and a Boolean indicating whether it is being " +
-      "created on the driver. When unset, no external UDF dispatcher is available and " +
-      "executing an external UDF fails. This is an operator-level setting: it selects " +
-      "the runtime that user code is executed by, so it is not intended to be changed " +
-      "by individual queries.")
+  object Dispatcher extends Enumeration {
+    val DIRECT = Value
+  }
+
+  val DISPATCHER = ConfigBuilder("spark.udf.worker.dispatcher")
+    .doc("Built-in dispatcher used to provision and manage external UDF workers " +
+      "(SPARK-55278). DIRECT launches local worker processes and communicates with them " +
+      "through gRPC over Unix domain sockets. Worker-specific launch and provisioning " +
+      "details belong in UDFWorkerSpecification instead of a custom dispatcher. This is " +
+      "an operator-level setting and is not intended to be changed by individual queries.")
     .version("4.4.0")
-    .stringConf
-    .createOptional
+    .withBindingPolicy(ConfigBindingPolicy.NOT_APPLICABLE)
+    .enumConf(Dispatcher)
+    .createWithDefault(Dispatcher.DIRECT)
 }

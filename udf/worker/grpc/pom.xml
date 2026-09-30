@@ -40,20 +40,10 @@
   <!--
     Home for the gRPC-based UDF worker transport. The gRPC service stubs are
     generated here (from the proto module's service definitions) and the gRPC
-    runtime is confined to this module, so spark-udf-worker-proto / -core and
-    their consumers (core, catalyst, sql/core) stay free of any gRPC
-    transitive dependency. (protobuf-java remains a transitive dependency of
-    those modules via the proto messages, as it was before; only gRPC is
-    removed from their classpath.)
-
-    Note: gRPC is kept off every shared classpath by the dependency graph
-    alone, since nothing on the runtime/assembly classpath depends on this
-    module yet. The gRPC runtime here is NOT shaded. Once the gRPC transport
-    is wired up and a runtime module depends on this one, the io.grpc and
-    protobuf classes should be relocated (mirroring the
-    org.sparkproject.spark_udf_worker.protobuf relocation in the proto module)
-    to avoid version clashes with Spark Connect's gRPC. That shading is
-    deferred to a follow-up.
+    runtime is confined to this module's compile dependencies. Spark core loads
+    the dispatcher factory reflectively, and sql/core supplies this module as
+    a runtime dependency. Relocating the packaged gRPC runtime is deferred to a
+    separate follow-up.
   -->
   <dependencies>
     <dependency>
@@ -133,6 +123,18 @@
     <dependency>
       <groupId>io.grpc</groupId>
       <artifactId>grpc-inprocess</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Test SparkEnv's reflective factory loading without a production dependency on core. -->
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-core_${scala.binary.version}</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

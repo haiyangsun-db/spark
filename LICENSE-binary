@@ -213,9 +213,12 @@ com.fasterxml.jackson.dataformat:jackson-dataformat-yaml
 com.fasterxml.jackson.datatype:jackson-datatype-jsr310
 com.fasterxml.jackson.module:jackson-module-scala_2.13
 com.github.joshelser:dropwizard-metrics-hadoop-metrics2-reporter
+com.google.android:annotations
+com.google.api.grpc:proto-google-common-protos
 com.google.code.findbugs:jsr305
 com.google.code.gson:gson
 com.google.crypto.tink:tink
+com.google.errorprone:error_prone_annotations
 com.google.flatbuffers:flatbuffers-java
 com.google.guava:guava
 com.ning:compress-lzf
@@ -265,6 +268,14 @@ io.fabric8:volcano-client
 io.fabric8:volcano-model
 io.fabric8:zjsonpatch
 io.github.java-diff-utils:java-diff-utils
+io.grpc:grpc-api
+io.grpc:grpc-context
+io.grpc:grpc-core
+io.grpc:grpc-netty
+io.grpc:grpc-protobuf
+io.grpc:grpc-protobuf-lite
+io.grpc:grpc-stub
+io.grpc:grpc-util
 io.jsonwebtoken:jjwt-api
 io.jsonwebtoken:jjwt-impl
 io.jsonwebtoken:jjwt-jackson
@@ -290,6 +301,7 @@ io.netty:netty-transport-classes-kqueue
 io.netty:netty-transport-native-epoll
 io.netty:netty-transport-native-kqueue
 io.netty:netty-transport-native-unix-common
+io.perfmark:perfmark-api
 io.vertx:vertx-auth-common
 io.vertx:vertx-core
 io.vertx:vertx-web-client
@@ -476,6 +488,7 @@ dev.ludovic.netlib:blas
 dev.ludovic.netlib:arpack
 dev.ludovic.netlib:lapack
 net.razorvine:pickle
+org.codehaus.mojo:animal-sniffer-annotations
 org.typelevel:algebra_2.13:jar
 org.typelevel:cats-kernel_2.13
 org.typelevel:spire_2.13

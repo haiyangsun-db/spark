@@ -70,7 +70,8 @@ The `grpc/` module owns the concrete direct dispatcher, channel and session
 implementations, native Unix-domain-socket transport selection, gRPC service-stub
 generation (from the UDF worker service proto above), and the gRPC runtime dependencies.
 Keeping gRPC here means `proto/`, `core/`, and their consumers (`core`, `catalyst`,
-`sql/core`) carry no gRPC dependency on their classpath.
+`sql/core`) carry no gRPC compile dependency. `sql/core` supplies the transport at
+runtime for external UDF execution.
 
 ## Wire protocol
 
@@ -103,6 +104,25 @@ session, it runs the optional environment lifecycle callables from the
 
 Environment setup runs **once per dispatcher** (not per session).
 Workers are terminated via SIGTERM/SIGKILL when the dispatcher is closed.
+
+### Spark runtime integration
+
+`SparkEnv` uses the built-in `DIRECT` dispatcher by default. It loads Spark's
+`DirectGrpcDispatcherFactory` reflectively on first external UDF use, caches
+dispatchers by worker specification through `UDFDispatcherManager`, and closes
+them when `SparkEnv` stops.
+
+`spark.udf.worker.dispatcher` selects among Spark's built-in dispatcher options;
+`DIRECT` is currently the only option. It supports direct worker specifications
+with Unix domain socket transport and the bidirectional-streaming capability.
+Worker-specific launch and provisioning logic belongs in the standard
+`UDFWorkerSpecification`, so applications cannot configure an arbitrary dispatcher
+factory class.
+
+The `spark-sql` runtime dependency supplies the transport without adding a gRPC
+compile dependency to Spark core or SQL. Assembly also explicitly depends on the
+transport so both Maven and SBT distributions include it. No language-specific
+worker, payload, or Init adaptation is added by this wiring.
 
 ## Basic usage (Scala)
 

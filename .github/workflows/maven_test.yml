@@ -114,7 +114,7 @@ jobs:
           ./build/mvn $MAVEN_CLI_OPTS -DskipTests -Pyarn -Pkubernetes -Pvolcano -Phive -Phive-thriftserver -Phadoop-cloud -Pjvm-profiler -Pspark-ganglia-lgpl -Pkinesis-asl -Pcredential-aws -Djava.version=${JAVA_VERSION/-ea} clean install
       - name: Package compile output
         run: |
-          # Exclude assembly/ from the artifact: 11 of 12 matrix entries wipe it
+          # Exclude assembly/ from the artifact: non-connect matrix entries wipe it
           # right after extraction (SPARK-51628 regression-test-for-SPARK-51600),
           # and the connect entry rebuilds it via `mvn install -pl assembly`.
           find . \( -path './build' -o -path './.git' -o -path './assembly' \) -prune \
@@ -167,6 +167,8 @@ jobs:
             sql#api,sql#catalyst,resource-managers#yarn,resource-managers#kubernetes#core
           - >-
             connect
+          - >-
+            udf#worker#core,udf#worker#grpc
         # Here, we split Hive and SQL tests into some of slow ones and the rest of them.
         included-tags: [ "" ]
         excluded-tags: [ "" ]
@@ -288,6 +290,11 @@ jobs:
         shell: |
           bash -c "if script -qec true 2>/dev/null; then script -qec bash\ {0}; else script -qe /dev/null bash {0}; fi"
         run: |
+          # This reusable workflow also tests release branches predating the UDF worker modules.
+          if [[ "$MODULES_TO_TEST" == "udf#worker#core,udf#worker#grpc" && ! -d udf/worker/grpc ]]; then
+            echo "Skipping UDF worker tests: the modules are not present on this branch."
+            exit 0
+          fi
           # Fix for TTY related issues when launching the Ammonite REPL in tests.
           export TERM=vt100
           # `set -e` to make the exit status as expected due to use script command to run the commands
